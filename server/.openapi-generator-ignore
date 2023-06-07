@@ -23,3 +23,4 @@
 #!docs/README.md
 
 api_caching_service.go
+api_errors_service.go

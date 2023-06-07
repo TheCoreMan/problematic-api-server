@@ -51,3 +51,9 @@ pre-commit install
 
 This project is based mostly around the API spec in `spec/openapi.yaml`. Use
 `./scripts/generate.sh` to generate the server and client if you change the API.
+
+> Note: some files are ignored when generating the server and client. Make sure
+> that your changes propagate to the ignored files as well.
+
+To implement a specific service, go to `/server/go/XXX_service.go` and
+implement the methods there.

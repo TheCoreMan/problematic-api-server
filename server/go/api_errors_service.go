@@ -11,7 +11,8 @@ package server
 
 import (
 	"context"
-	"errors"
+	"fmt"
+	"math/rand"
 	"net/http"
 )
 
@@ -27,14 +28,22 @@ func NewErrorsApiService() ErrorsApiServicer {
 
 // ErrorsPercentGet - An API that will return an error \&quot;error_percent\&quot; percent of the time
 func (s *ErrorsApiService) ErrorsPercentGet(ctx context.Context, errorPercent int32) (ImplResponse, error) {
-	// TODO - update ErrorsPercentGet with the required logic for this service method.
-	// Add api_errors_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	errorFraction := float32(errorPercent) / 100.0
+	if errorFraction < 0.0 || errorFraction > 1.0 {
+		return Response(http.StatusBadRequest, "error_percent must be between 0 and 100"), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, {}) or use other options such as http.Ok ...
-	// return Response(200, nil),nil
-
-	// TODO: Uncomment the next line to return response Response(500, {}) or use other options such as http.Ok ...
-	// return Response(500, nil),nil
-
-	return Response(http.StatusNotImplemented, nil), errors.New("ErrorsPercentGet method not implemented")
+	// Get a weak random number between 0 and 1
+	//nolint:gosec // we're not using this for anything security related
+	randomFraction := float32(0.0 + (1.0-0.0)*rand.Float64())
+	if randomFraction < errorFraction {
+		return Response(
+			http.StatusInternalServerError,
+			fmt.Sprintf("Rolled a %.2f which is less than %.2f", randomFraction, errorFraction),
+		), nil
+	}
+	return Response(
+		http.StatusOK,
+		fmt.Sprintf("Rolled a %.2f which is greater than or equal to %.2f", randomFraction, errorFraction),
+	), nil
 }
