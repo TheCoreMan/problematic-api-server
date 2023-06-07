@@ -1,0 +1,152 @@
+openapi: 3.0.0
+info:
+  title: Rate Limit API
+  version: 1.0.0
+servers:
+- description: Local development server
+  url: http://localhost:4578
+paths:
+  /rate-limit/by-ip:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessfulResponse'
+          description: OK
+        "429":
+          description: Too Many Requests
+      summary: An API with an aggressive rate limit by IP
+      tags:
+      - Rate limiting
+  /rate-limit/by-account:
+    get:
+      parameters:
+      - description: Account ID (email)
+        explode: false
+        in: header
+        name: accountId
+        required: true
+        schema:
+          type: string
+        style: simple
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessfulResponse'
+          description: OK
+        "429":
+          description: Too Many Requests
+      summary: An API with an aggressive rate limit by account
+      tags:
+      - Rate limiting
+  /errors/percent:
+    get:
+      parameters:
+      - description: Percentage of requests that result in an error (0-100)
+        explode: true
+        in: query
+        name: error_percent
+        required: true
+        schema:
+          maximum: 100
+          minimum: 0
+          type: integer
+        style: form
+      responses:
+        "200":
+          description: OK
+        "500":
+          description: Server Error
+      summary: An API that will return an error "error_percent" percent of the time
+      tags:
+      - Errors
+  /rate-limit/exponential-backoff:
+    get:
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessfulResponse'
+          description: OK
+        "429":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CooldownResponse'
+          description: Too Many Requests
+      summary: |
+        An API with an aggressive rate limit with exponential backoff.
+      tags:
+      - Rate limiting
+  /cacheable:
+    get:
+      description: |
+        Returns a cacheable response for the given book title and line number.
+        If `with-control` is set to true, includes Cache-Control header for
+        controlling caching behavior, such as max-age.
+
+        Generally, the response should be cached since it's always
+        the same for the same parameters.
+      parameters:
+      - description: Title of the book
+        explode: true
+        in: query
+        name: book-title
+        required: true
+        schema:
+          type: string
+        style: form
+      - description: Line number
+        explode: true
+        in: query
+        name: line-number
+        required: true
+        schema:
+          type: integer
+        style: form
+      - description: Include the Cache-Control header in the response?
+        explode: true
+        in: query
+        name: with-control
+        required: false
+        schema:
+          type: boolean
+        style: form
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessfulResponse'
+          description: OK
+        "404":
+          description: Book not found or line not found
+      summary: Get a cacheable response.
+      tags:
+      - Caching
+components:
+  schemas:
+    SuccessfulResponse:
+      example:
+        book-name: book-name
+        line-number: 0
+        text: text
+      properties:
+        book-name:
+          type: string
+        line-number:
+          type: integer
+        text:
+          type: string
+      type: object
+    CooldownResponse:
+      properties:
+        cooldown:
+          description: Cooldown in seconds
+          type: integer
+      type: object

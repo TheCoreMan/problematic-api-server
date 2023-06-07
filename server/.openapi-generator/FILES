@@ -1,0 +1,17 @@
+.openapi-generator-ignore
+README.md
+api/openapi.yaml
+go/api.go
+go/api_caching.go
+go/api_caching_service.go
+go/api_errors.go
+go/api_errors_service.go
+go/api_rate_limiting.go
+go/api_rate_limiting_service.go
+go/error.go
+go/helpers.go
+go/impl.go
+go/logger.go
+go/model_cooldown_response.go
+go/model_successful_response.go
+go/routers.go
