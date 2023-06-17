@@ -31,7 +31,7 @@ paths:
       summary: An API with an aggressive rate limit by account
       parameters:
         - in: header
-          name: accountId
+          name: X-Account-Id
           schema:
             type: string
           required: true
