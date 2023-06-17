@@ -10,3 +10,6 @@ openapi-generator-cli generate -i spec/openapi.yaml -g go -o client --additional
 
 # Generate the server
 openapi-generator-cli generate -i spec/openapi.yaml -g go-server -o server --additional-properties=addResponseHeaders=true,outputAsLibrary=true,packageName=server
+
+# Copy the spec to the swagger docs
+cp spec/openapi.yaml swagger/problematic_api.yaml

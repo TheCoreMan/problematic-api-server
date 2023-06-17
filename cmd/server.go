@@ -34,6 +34,11 @@ func main() {
 	rateLimitingAPIController := server.NewRateLimitingApiController(rateLimitingAPIService)
 
 	router := server.NewRouter(cachingAPIController, errorsAPIController, rateLimitingAPIController)
+	// Add a mux Router that serves the /swagger directory on /swagger
+	// This is a hack to get the swagger UI to work with the generated
+	// server code.
+	router.PathPrefix("/swagger/").Handler(http.StripPrefix("/swagger/", http.FileServer(http.Dir("./swagger/"))))
+	mainLogger.Info().Str("swaggerPath", "/swagger/").Msg("serving swagger UI")
 
 	// Add CORS allowed origins
 	allowedOrigins := viper.GetString(config.AllowedOriginsConfigKey)

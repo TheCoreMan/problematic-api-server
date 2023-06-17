@@ -78,7 +78,7 @@ func getConfiguredBooksDir() string {
 func ReadRandomLineFromFile(fileName string, lineNumber int) (string, error) {
 	// protect against directory traversal attacks,
 	// see https://owasp.org/www-community/attacks/Path_Traversal
-	if isFileNameTryingToTraverse(fileName) {
+	if fileName != "" && isFileNameTryingToTraverse(fileName) {
 		return "", errors.New("invalid file name - possible directory traversal attempt")
 	}
 

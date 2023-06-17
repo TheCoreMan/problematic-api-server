@@ -1,0 +1,147 @@
+openapi: 3.0.0
+info:
+  title: Problematic API
+  description: |
+    This API is designed to be problematic. It has rate limiting, errors,
+    and caching paradigms the clients need to solve.
+
+    This is mostly an educational tool for learning about API design and
+    consumption.
+  version: 1.0.0
+servers:
+  - url: http://localhost:4578/
+    description: Local development server
+paths:
+  /rate-limit/by-ip:
+    get:
+      summary: An API with an aggressive rate limit by IP
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessfulResponse"
+        "429":
+          description: Too Many Requests
+      tags:
+        - Rate limiting
+  /rate-limit/by-account:
+    get:
+      summary: An API with an aggressive rate limit by account
+      parameters:
+        - in: header
+          name: accountId
+          schema:
+            type: string
+          required: true
+          description: Account ID (email)
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessfulResponse"
+        "429":
+          description: Too Many Requests
+      tags:
+        - Rate limiting
+  /errors/percent:
+    get:
+      summary: An API that will return an error "error_percent" percent of the time
+      parameters:
+        - in: query
+          name: error_percent
+          schema:
+            type: integer
+            minimum: 0
+            maximum: 100
+          required: true
+          description: Percentage of requests that result in an error (0-100)
+      responses:
+        "200":
+          description: OK
+        "500":
+          description: Server Error
+      tags:
+        - Errors
+  /rate-limit/exponential-backoff:
+    get:
+      summary: |
+        An API with an aggressive rate limit with exponential backoff.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessfulResponse"
+        "429":
+          description: Too Many Requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CooldownResponse"
+      tags:
+        - Rate limiting
+  /cacheable:
+    get:
+      summary: Get a cacheable response.
+      parameters:
+        - in: query
+          name: book-title
+          schema:
+            type: string
+          required: true
+          description: Title of the book
+        - in: query
+          name: line-number
+          schema:
+            type: integer
+          required: true
+          description: Line number
+        - in: query
+          name: with-control
+          schema:
+            type: boolean
+          description: Include the Cache-Control header in the response?
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuccessfulResponse"
+        "404":
+          description: Book not found or line not found
+      description: |
+        Returns a cacheable response for the given book title and line number.
+        If `with-control` is set to true, includes Cache-Control header for
+        controlling caching behavior, such as max-age.
+
+        Generally, the response should be cached since it's always
+        the same for the same parameters.
+      tags:
+        - Caching
+components:
+  schemas:
+    SuccessfulResponse:
+      type: object
+      properties:
+        book-name:
+          type: string
+        line-number:
+          type: integer
+        text:
+          type: string
+      example:
+        book-name: war-and-peace.txt
+        line-number: 256
+        text: "He said no more, but expressed his resignation to cruel fate by a"
+    CooldownResponse:
+      type: object
+      properties:
+        cooldown:
+          type: integer
+          description: Cooldown in seconds
