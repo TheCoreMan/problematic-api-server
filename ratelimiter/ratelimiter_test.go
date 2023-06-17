@@ -82,6 +82,36 @@ func TestShouldRateLimit(t *testing.T) {
 			wantShouldRateLimit: []bool{false, true},
 			wantReasonContains:  []string{"", "Rate limit exceeded for IP"},
 		},
+		{
+			name: "Three requests, different IPs, IP rate limit, should limit only one",
+			config: ratelimiter.Config{
+				IPRateLimitWindow: time.Second,
+			},
+			requestsPublisher: func() (<-chan *http.Request, <-chan bool) {
+				ch := make(chan *http.Request, 2)
+				done := make(chan bool)
+				req := httptest.NewRequest(http.MethodGet, "https://example.com/rate-limit/by-ip", nil)
+				req2 := httptest.NewRequest(http.MethodGet, "https://example.com/rate-limit/by-ip", nil)
+				// The default remote address is 192.0.2.1:1234
+				// See https://cs.opensource.google/go/go/+/refs/tags/go1.20.5:src/net/http/httptest/httptest.go;l=75
+				req2.RemoteAddr = "1.1.1.1:1234"
+				go func() {
+					ch <- req
+					time.Sleep(50 * time.Millisecond)
+
+					ch <- req2
+					time.Sleep(50 * time.Millisecond)
+
+					ch <- req
+					time.Sleep(50 * time.Millisecond)
+
+					done <- true
+				}()
+				return ch, done
+			},
+			wantShouldRateLimit: []bool{false, false, true},
+			wantReasonContains:  []string{"", "", "Rate limit exceeded for IP"},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
