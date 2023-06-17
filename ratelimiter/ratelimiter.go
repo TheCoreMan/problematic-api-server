@@ -20,16 +20,22 @@ type RateLimiter interface {
 }
 
 type Config struct {
-	IPRateLimitWindow      time.Duration
-	AccountRateLimitWindow time.Duration
+	IPRateLimitWindow          time.Duration
+	AccountRateLimitWindow     time.Duration
+	BackoffRateLimitWindow     time.Duration
+	BackoffRateLimitMultiplier int
 }
 
+// Using sync.Map for safe concurrent access.
 type Impl struct {
-	logger                 zerolog.Logger
-	ipRateLimitWindow      time.Duration
-	ipRateLimitMap         sync.Map
-	accountRateLimitWindow time.Duration
-	accountRateLimitMap    sync.Map
+	logger                     zerolog.Logger
+	ipRateLimitWindow          time.Duration
+	ipRateLimitMap             sync.Map
+	accountRateLimitWindow     time.Duration
+	accountRateLimitMap        sync.Map
+	backoffRateLimitWindow     time.Duration
+	backoffRateLimitMultiplier int
+	backoffRateLimitMap        sync.Map
 }
 
 func NewRateLimiter(
@@ -38,11 +44,14 @@ func NewRateLimiter(
 ) RateLimiter {
 	logger = logger.With().Str("component", "rate-limiter").Logger()
 	return &Impl{
-		logger:                 logger,
-		ipRateLimitWindow:      config.IPRateLimitWindow,
-		ipRateLimitMap:         sync.Map{},
-		accountRateLimitWindow: config.AccountRateLimitWindow,
-		accountRateLimitMap:    sync.Map{},
+		logger:                     logger,
+		ipRateLimitWindow:          config.IPRateLimitWindow,
+		ipRateLimitMap:             sync.Map{},
+		accountRateLimitWindow:     config.AccountRateLimitWindow,
+		accountRateLimitMap:        sync.Map{},
+		backoffRateLimitWindow:     config.BackoffRateLimitWindow,
+		backoffRateLimitMultiplier: config.BackoffRateLimitMultiplier,
+		backoffRateLimitMap:        sync.Map{},
 	}
 }
 
@@ -119,6 +128,7 @@ func (rl *Impl) ShouldRateLimit(r *http.Request) (bool, string, error) {
 }
 
 func (rl *Impl) shouldRateLimitByIP(r *http.Request) (bool, string) {
+	// ip validated outside the function, safe to use here
 	ip := strings.Split(r.RemoteAddr, ":")[0]
 
 	now := time.Now()
@@ -137,11 +147,8 @@ func (rl *Impl) shouldRateLimitByIP(r *http.Request) (bool, string) {
 }
 
 func (rl *Impl) shouldRateLimitByAccount(r *http.Request) (bool, string) {
-	accounts, ok := r.Header["X-Account-Id"]
-	if !ok || len(accounts) != 1 {
-		return true, "Missing or Malformed X-Account-Id header"
-	}
-
+	// Header is validated outside the function, safe to use here
+	accounts := r.Header["X-Account-Id"]
 	account := accounts[0]
 
 	now := time.Now()
@@ -157,6 +164,50 @@ func (rl *Impl) shouldRateLimitByAccount(r *http.Request) (bool, string) {
 	return false, ""
 }
 
-func (rl *Impl) shouldRateLimitExponentialBackoff(_ *http.Request) (bool, string) {
+type exponentialRateLimitEntry struct {
+	lastRequestTime time.Time
+	violations      int
+}
+
+func (rl *Impl) shouldRateLimitExponentialBackoff(r *http.Request) (bool, string) {
+	// ip validated outside the function, safe to use here
+	ip := strings.Split(r.RemoteAddr, ":")[0]
+
+	now := time.Now()
+	// Note: First load, then store.
+	existingEntry, ok := rl.backoffRateLimitMap.Load(ip)
+	if !ok {
+		// This is the first violation
+		newEntry := exponentialRateLimitEntry{
+			lastRequestTime: now,
+			violations:      1,
+		}
+		rl.backoffRateLimitMap.Store(ip, newEntry)
+	} else {
+		lastRequestTime := existingEntry.(exponentialRateLimitEntry).lastRequestTime
+		violations := existingEntry.(exponentialRateLimitEntry).violations
+		punishmentCount := violations * rl.backoffRateLimitMultiplier
+		punishmentTime := time.Duration(punishmentCount) * rl.backoffRateLimitWindow
+		windowEnd := lastRequestTime.Add(punishmentTime)
+		if windowEnd.After(now) {
+			reasonMessage := fmt.Sprintf(
+				"Rate limit exceeded for IP %s by %s. violated %d times",
+				ip, windowEnd.Sub(now).String(), violations,
+			)
+			newEntry := exponentialRateLimitEntry{
+				lastRequestTime: now,
+				violations:      violations + 1,
+			}
+			rl.backoffRateLimitMap.Store(ip, newEntry)
+			return true, reasonMessage
+		}
+
+		newEntry := exponentialRateLimitEntry{
+			lastRequestTime: now,
+			violations:      violations,
+		}
+		rl.backoffRateLimitMap.Store(ip, newEntry)
+	}
+
 	return false, ""
 }

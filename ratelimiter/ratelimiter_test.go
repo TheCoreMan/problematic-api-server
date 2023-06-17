@@ -195,6 +195,47 @@ func TestShouldRateLimit(t *testing.T) {
 			wantReasonContains:  []string{"", ""},
 			wantErrors:          []bool{true, true},
 		},
+		{
+			name: "Rate limit exponential backoff, sanity",
+			config: ratelimiter.Config{
+				IPRateLimitWindow:          time.Second,
+				AccountRateLimitWindow:     time.Minute,
+				BackoffRateLimitWindow:     30 * time.Millisecond,
+				BackoffRateLimitMultiplier: 2,
+			},
+			requestsPublisher: func() (<-chan *http.Request, <-chan bool) {
+				ch := make(chan *http.Request, 1)
+				done := make(chan bool)
+				req := httptest.NewRequest(http.MethodGet, "https://example.com/rate-limit/exponential-backoff", nil)
+				go func() {
+					ch <- req
+					// This one is OK, outside the window
+					time.Sleep(100 * time.Millisecond)
+					ch <- req
+					// First violation, inside the window
+					time.Sleep(10 * time.Millisecond)
+					ch <- req
+					// Second violation, also inside the window
+					time.Sleep(10 * time.Millisecond)
+					ch <- req
+
+					// Third violation - even though the window is 30ms
+					// it's a violation because the window is multiplied
+					time.Sleep(40 * time.Millisecond)
+					ch <- req
+
+					// Wait until the window is over, no violation
+					time.Sleep(1 * time.Second)
+					ch <- req
+					time.Sleep(10 * time.Millisecond)
+					done <- true
+				}()
+				return ch, done
+			},
+			wantShouldRateLimit: []bool{false, false, true, true, true, false},
+			wantReasonContains:  []string{"", "", "violated 1 time", "violated 2 times", "violated 3 times", ""},
+			wantErrors:          []bool{false, false, false, false, false, false},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -211,7 +252,6 @@ func TestShouldRateLimit(t *testing.T) {
 			for {
 				select {
 				case req := <-requests:
-					t.Log("Received request")
 					shouldRateLimit, reason, err := rateLimiter.ShouldRateLimit(req)
 					rateLimitResponses = append(rateLimitResponses, shouldRateLimit)
 					rateLimitReasons = append(rateLimitReasons, reason)
