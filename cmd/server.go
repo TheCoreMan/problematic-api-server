@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"github.com/thecoreman/problematic-api-server/config"
 	server "github.com/thecoreman/problematic-api-server/server/go"
 
 	"github.com/gorilla/handlers"
@@ -17,20 +18,7 @@ import (
 )
 
 const (
-	envPrefix                   = "PROBLEMATIC"
-	hostConfigKey               = "HOST"
-	hostConfigDefaultValue      = "0.0.0.0"
-	portConfigKey               = "PORT"
-	portConfigDefaultValue      = "4578"
-	logFormatConfigKey          = "LOG_FORMAT"
-	logFormatConfigDefaultValue = "text"
-	logLevelConfigKey           = "LOG_LEVEL"
-	logLevelConfigDefaultValue  = "debug"
-	allowedOriginsConfigKey     = "ALLOWED_ORIGINS"
-	allowedOriginsDefaultValue  = "*"
-	booksDirectoryConfigKey     = "BOOKS_DIRECTORY"
-	booksDirectoryDefaultValue  = "./books"
-	defaultServerReadTimeout    = 5 * time.Second
+	defaultServerReadTimeout = 5 * time.Second
 )
 
 func main() {
@@ -42,13 +30,13 @@ func main() {
 	errorsAPIService := server.NewErrorsApiService()
 	errorsAPIController := server.NewErrorsApiController(errorsAPIService)
 
-	rateLimitingAPIService := server.NewRateLimitingApiService()
+	rateLimitingAPIService := server.NewRateLimitingApiService(mainLogger)
 	rateLimitingAPIController := server.NewRateLimitingApiController(rateLimitingAPIService)
 
 	router := server.NewRouter(cachingAPIController, errorsAPIController, rateLimitingAPIController)
 
 	// Add CORS allowed origins
-	allowedOrigins := viper.GetString(allowedOriginsConfigKey)
+	allowedOrigins := viper.GetString(config.AllowedOriginsConfigKey)
 	if allowedOrigins != "" {
 		splitAllowedOrigins := strings.Split(allowedOrigins, ",")
 		mainLogger.Info().
@@ -66,6 +54,8 @@ func main() {
 		mainLogger.Info().
 			Msg("CORS: no allowed origins configured")
 	}
+
+	router.Use(handlers.RecoveryHandler(handlers.PrintRecoveryStack(true)))
 
 	serverAddress := getServerAddressFromConfig()
 
@@ -90,17 +80,9 @@ func main() {
 //
 // Anything that should happen on boot (versus runtime) should happen here.
 func bootstrap() zerolog.Logger {
-	viper.SetEnvPrefix(envPrefix)
-	viper.AutomaticEnv()
+	config.BootstrapConfig()
 
-	viper.SetDefault(hostConfigKey, hostConfigDefaultValue)
-	viper.SetDefault(portConfigKey, portConfigDefaultValue)
-	viper.SetDefault(logLevelConfigKey, logLevelConfigDefaultValue)
-	viper.SetDefault(logFormatConfigKey, logFormatConfigDefaultValue)
-	viper.SetDefault(allowedOriginsConfigKey, allowedOriginsDefaultValue)
-	viper.SetDefault(booksDirectoryConfigKey, booksDirectoryDefaultValue)
-
-	configuredLogLevel := viper.GetString(logLevelConfigKey)
+	configuredLogLevel := viper.GetString(config.LogLevelConfigKey)
 	level, err := zerolog.ParseLevel(configuredLogLevel)
 	if err != nil {
 		log.Fatal().
@@ -111,7 +93,7 @@ func bootstrap() zerolog.Logger {
 	}
 	zerolog.SetGlobalLevel(level)
 
-	if viper.GetString(logFormatConfigKey) == "text" {
+	if viper.GetString(config.LogFormatConfigKey) == "text" {
 		log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
 	}
 

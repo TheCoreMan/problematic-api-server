@@ -35,6 +35,8 @@ For example, to change the port, run:
 PROBLEMATIC_PORT=2345 go run cmd/server.go
 ```
 
+> To see all available configuration options, please review `cmd/config.go`.
+
 ## Development
 
 ### Pre-commit

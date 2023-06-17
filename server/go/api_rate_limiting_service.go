@@ -13,16 +13,24 @@ import (
 	"context"
 	"errors"
 	"net/http"
+
+	"github.com/rs/zerolog"
+	"github.com/thecoreman/problematic-api-server/logic"
 )
 
 // RateLimitingApiService is a service that implements the logic for the RateLimitingApiServicer
 // This service should implement the business logic for every endpoint for the RateLimitingApi API.
 // Include any external packages or services that will be required by this service.
-type RateLimitingApiService struct{}
+type RateLimitingApiService struct {
+	logger zerolog.Logger
+}
 
 // NewRateLimitingApiService creates a default api service
-func NewRateLimitingApiService() RateLimitingApiServicer {
-	return &RateLimitingApiService{}
+func NewRateLimitingApiService(logger zerolog.Logger) RateLimitingApiServicer {
+	logger = logger.With().Str("component", "rate-limiting-api").Logger()
+	return &RateLimitingApiService{
+		logger: logger,
+	}
 }
 
 // RateLimitByAccountGet - An API with an aggressive rate limit by account
@@ -41,16 +49,17 @@ func (s *RateLimitingApiService) RateLimitByAccountGet(ctx context.Context, acco
 
 // RateLimitByIpGet - An API with an aggressive rate limit by IP
 func (s *RateLimitingApiService) RateLimitByIpGet(ctx context.Context) (ImplResponse, error) {
-	// TODO - update RateLimitByIpGet with the required logic for this service method.
-	// Add api_rate_limiting_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	s.logger.Info().Msg("Got into RateLimitByIpGet")
+	line, err := logic.ReadRandomLineFromFile("", -1)
+	if err != nil {
+		return Response(http.StatusInternalServerError, err.Error()), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, SuccessfulResponse{}) or use other options such as http.Ok ...
-	// return Response(200, SuccessfulResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(429, {}) or use other options such as http.Ok ...
-	// return Response(429, nil),nil
-
-	return Response(http.StatusNotImplemented, nil), errors.New("RateLimitByIpGet method not implemented")
+	return Response(200, SuccessfulResponse{
+		BookName:   "Random",
+		LineNumber: 0,
+		Text:       line,
+	}), nil
 }
 
 // RateLimitExponentialBackoffGet - An API with an aggressive rate limit with exponential backoff.
