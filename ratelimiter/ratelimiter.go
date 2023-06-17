@@ -2,8 +2,10 @@ package ratelimiter
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
+	"net/mail"
 	"strings"
 	"sync"
 	"time"
@@ -92,6 +94,20 @@ func (rl *Impl) ShouldRateLimit(r *http.Request) (bool, string, error) {
 		should, reason := rl.shouldRateLimitByIP(r)
 		return should, reason, nil
 	case "/rate-limit/by-account":
+		accounts, ok := r.Header["X-Account-Id"]
+		if !ok || len(accounts) != 1 {
+			return false, "", errors.New("missing or Malformed X-Account-Id header")
+		}
+
+		account := accounts[0]
+		_, emailParseErr := mail.ParseAddress(account)
+		if emailParseErr != nil {
+			return false, "",
+				fmt.Errorf(
+					"malformed account - must be valid email. Details: %w",
+					emailParseErr,
+				)
+		}
 		should, reason := rl.shouldRateLimitByAccount(r)
 		return should, reason, nil
 	case "/rate-limit/exponential-backoff":
@@ -127,7 +143,6 @@ func (rl *Impl) shouldRateLimitByAccount(r *http.Request) (bool, string) {
 	}
 
 	account := accounts[0]
-	rl.logger.Debug().Str("account", account).Msg("Checking rate limit for account")
 
 	now := time.Now()
 	lastRequestTime, ok := rl.accountRateLimitMap.Load(account)

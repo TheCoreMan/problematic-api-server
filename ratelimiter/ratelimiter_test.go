@@ -15,9 +15,15 @@ import (
 //nolint:gocognit,cyclop // Testing rate limiting seems complex but once you understand one case it's fine.
 func TestShouldRateLimit(t *testing.T) {
 	tests := []struct {
-		name                string
-		config              ratelimiter.Config
-		requestsPublisher   func() (<-chan *http.Request, <-chan bool)
+		name   string
+		config ratelimiter.Config
+		// This function returns two channels:
+		// The first channel represents incoming http requests
+		// The second indicates when the first one is done.
+		requestsPublisher func() (<-chan *http.Request, <-chan bool)
+		// These "want" slices represent what the response of the
+		// rate limit function should be for each of the consumed
+		// requests in the channel from the publisher IN ORDER.
 		wantShouldRateLimit []bool
 		wantReasonContains  []string
 		wantErrors          []bool
@@ -162,6 +168,32 @@ func TestShouldRateLimit(t *testing.T) {
 			},
 			wantShouldRateLimit: []bool{false, true},
 			wantReasonContains:  []string{"", "Rate limit exceeded for account hello@shaynehmad.com"},
+		},
+		{
+			name: "Rate limit by account, invalid account, should err",
+			config: ratelimiter.Config{
+				IPRateLimitWindow:      time.Second,
+				AccountRateLimitWindow: time.Minute,
+			},
+			requestsPublisher: func() (<-chan *http.Request, <-chan bool) {
+				ch := make(chan *http.Request, 1)
+				done := make(chan bool)
+				req := httptest.NewRequest(http.MethodGet, "https://example.com/rate-limit/by-account", nil)
+				req.Header.Set("X-Account-Id", "this is not an email")
+				req2 := httptest.NewRequest(http.MethodGet, "https://example.com/rate-limit/by-account", nil)
+				// req2 - Not adding the header
+				go func() {
+					ch <- req
+					time.Sleep(5 * time.Millisecond)
+					ch <- req2
+					time.Sleep(5 * time.Millisecond)
+					done <- true
+				}()
+				return ch, done
+			},
+			wantShouldRateLimit: []bool{false, false},
+			wantReasonContains:  []string{"", ""},
+			wantErrors:          []bool{true, true},
 		},
 	}
 	for _, tt := range tests {
