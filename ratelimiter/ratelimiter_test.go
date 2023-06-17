@@ -20,6 +20,7 @@ func TestShouldRateLimit(t *testing.T) {
 		requestsPublisher   func() (<-chan *http.Request, <-chan bool)
 		wantShouldRateLimit []bool
 		wantReasonContains  []string
+		wantErrors          []bool
 	}{
 		{
 			name: "Requests to path that doesn't get rate limited, shouldn't limit",
@@ -45,9 +46,10 @@ func TestShouldRateLimit(t *testing.T) {
 			},
 			wantShouldRateLimit: []bool{false, false, false, false},
 			wantReasonContains:  []string{"", "", "", ""},
+			wantErrors:          []bool{false, false, false, false},
 		},
 		{
-			name: "Two requests, same IP, IP rate limit, shouldn't limit",
+			name: "Rate Limit by IP: Two requests, same IP, shouldn't limit",
 			config: ratelimiter.Config{
 				IPRateLimitWindow: 500 * time.Millisecond,
 			},
@@ -66,9 +68,10 @@ func TestShouldRateLimit(t *testing.T) {
 			},
 			wantShouldRateLimit: []bool{false, false},
 			wantReasonContains:  []string{"", ""},
+			wantErrors:          []bool{false, false},
 		},
 		{
-			name: "Two requests, same IP, IP rate limit, should limit",
+			name: "Rate Limit by IP: Two requests, same IP, should limit",
 			config: ratelimiter.Config{
 				IPRateLimitWindow: time.Second,
 			},
@@ -87,9 +90,10 @@ func TestShouldRateLimit(t *testing.T) {
 			},
 			wantShouldRateLimit: []bool{false, true},
 			wantReasonContains:  []string{"", "Rate limit exceeded for IP 192.0.2.1"},
+			wantErrors:          []bool{false, false},
 		},
 		{
-			name: "Three requests, different IPs, IP rate limit, should limit only one",
+			name: "Rate Limit by IP: Three requests, different IPs, should limit only one",
 			config: ratelimiter.Config{
 				IPRateLimitWindow: time.Second,
 			},
@@ -114,6 +118,50 @@ func TestShouldRateLimit(t *testing.T) {
 			},
 			wantShouldRateLimit: []bool{false, false, true},
 			wantReasonContains:  []string{"", "", "Rate limit exceeded for IP 1.1.1.1"},
+			wantErrors:          []bool{false, false, false},
+		},
+		{
+			name: "Rate Limit by IP: Invalid IP, should limit",
+			config: ratelimiter.Config{
+				IPRateLimitWindow: time.Second,
+			},
+			requestsPublisher: func() (<-chan *http.Request, <-chan bool) {
+				ch := make(chan *http.Request, 2)
+				done := make(chan bool)
+				req := httptest.NewRequest(http.MethodGet, "https://example.com/rate-limit/by-ip", nil)
+				req.RemoteAddr = "This is not an IP!"
+				go func() {
+					ch <- req
+					done <- true
+				}()
+				return ch, done
+			},
+			wantShouldRateLimit: []bool{false},
+			wantReasonContains:  []string{""},
+			wantErrors:          []bool{true},
+		},
+		{
+			name: "Rate limit by account, two requests, same account, should limit",
+			config: ratelimiter.Config{
+				IPRateLimitWindow:      time.Second,
+				AccountRateLimitWindow: time.Minute,
+			},
+			requestsPublisher: func() (<-chan *http.Request, <-chan bool) {
+				ch := make(chan *http.Request, 1)
+				done := make(chan bool)
+				req := httptest.NewRequest(http.MethodGet, "https://example.com/rate-limit/by-account", nil)
+				req.Header.Set("X-Account-Id", "hello@shaynehmad.com")
+				go func() {
+					ch <- req
+					time.Sleep(50 * time.Millisecond)
+					ch <- req
+					time.Sleep(50 * time.Millisecond)
+					done <- true
+				}()
+				return ch, done
+			},
+			wantShouldRateLimit: []bool{false, true},
+			wantReasonContains:  []string{"", "Rate limit exceeded for account hello@shaynehmad.com"},
 		},
 	}
 	for _, tt := range tests {
@@ -127,27 +175,36 @@ func TestShouldRateLimit(t *testing.T) {
 			requests, done := tt.requestsPublisher()
 			rateLimitResponses := []bool{}
 			rateLimitReasons := []string{}
+			rateLimitErrors := []error{}
 			for {
 				select {
 				case req := <-requests:
 					t.Log("Received request")
-					shouldRateLimit, reason := rateLimiter.ShouldRateLimit(req)
+					shouldRateLimit, reason, err := rateLimiter.ShouldRateLimit(req)
 					rateLimitResponses = append(rateLimitResponses, shouldRateLimit)
 					rateLimitReasons = append(rateLimitReasons, reason)
+					rateLimitErrors = append(rateLimitErrors, err)
 				case <-done:
 					if len(rateLimitResponses) != len(tt.wantShouldRateLimit) {
 						t.Fatalf("Got %d responses, want %d", len(rateLimitResponses), len(tt.wantShouldRateLimit))
 					}
 
-					for i, want := range tt.wantShouldRateLimit {
-						if rateLimitResponses[i] != want {
-							t.Errorf("Response %d: got %v, want %v", i, rateLimitResponses[i], want)
+					for i, wantRateLimitDecision := range tt.wantShouldRateLimit {
+						if rateLimitResponses[i] != wantRateLimitDecision {
+							t.Errorf("Response %d: got %v, want %v", i, rateLimitResponses[i], wantRateLimitDecision)
 						}
 					}
 
-					for i, want := range tt.wantReasonContains {
-						if !strings.Contains(rateLimitReasons[i], want) {
-							t.Errorf("Response %d: got %v, want to contain %v", i, rateLimitReasons[i], want)
+					for i, wantReasonToContain := range tt.wantReasonContains {
+						if !strings.Contains(rateLimitReasons[i], wantReasonToContain) {
+							t.Errorf("Response %d: got %v, want to contain %v", i, rateLimitReasons[i], wantReasonToContain)
+						}
+					}
+
+					for i, wantedError := range tt.wantErrors {
+						gotAnError := rateLimitErrors[i] != nil
+						if gotAnError != wantedError {
+							t.Errorf("Response %d: got error %v, wantErr %v", i, rateLimitErrors[i], wantedError)
 						}
 					}
 
