@@ -12,9 +12,10 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
-)
+	"strings"
 
-const bookAssetsDirName = "books"
+	"github.com/spf13/viper"
+)
 
 func getRandomFile(dirPath string) (string, error) {
 	files, err := os.ReadDir(dirPath)
@@ -31,13 +32,7 @@ func getRandomFile(dirPath string) (string, error) {
 	return files[randIndex].Name(), nil
 }
 
-func getRandomLine(filePath string) (string, error) {
-	file, err := os.Open(filePath)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-
+func getRandomLine(file *os.File) (string, error) {
 	scanner := bufio.NewScanner(file)
 	lines := []string{}
 	for scanner.Scan() {
@@ -69,34 +64,45 @@ func (e *BookNotFoundError) Error() string {
 	return fmt.Sprintf("book %s not found in library", e.BookTitle)
 }
 
+func isFileNameTryingToTraverse(fileName string) bool {
+	tryingToAttack := filepath.Clean(fileName) != fileName ||
+		fileName[0] == filepath.Separator ||
+		strings.Contains(fileName, "..")
+	return tryingToAttack
+}
+
+func getConfiguredBooksDir() string {
+	return viper.GetString("BOOKS_DIRECTORY")
+}
+
 func ReadRandomLineFromFile(fileName string, lineNumber int) (string, error) {
-	var finalFileName string
-	if fileName == "" {
-		pickedFile, err := getRandomFile(bookAssetsDirName)
-		if err != nil {
-			return "", err
-		}
-		finalFileName = filepath.Join(bookAssetsDirName, pickedFile)
-	} else {
-		finalFileName = filepath.Join(bookAssetsDirName, fileName)
+	// protect against directory traversal attacks,
+	// see https://owasp.org/www-community/attacks/Path_Traversal
+	if isFileNameTryingToTraverse(fileName) {
+		return "", errors.New("invalid file name - possible directory traversal attempt")
 	}
 
+	finalFileName, filePathErr := getBookFilePath(fileName)
+	if filePathErr != nil {
+		return "", filePathErr
+	}
+
+	file, fileOpenErr := os.Open(finalFileName)
+	if fileOpenErr != nil {
+		if os.IsNotExist(fileOpenErr) {
+			return "", errors.Join(fileOpenErr, &BookNotFoundError{BookTitle: fileName})
+		}
+		return "", fileOpenErr
+	}
+	defer file.Close()
+
 	if lineNumber <= 0 {
-		pickedLine, err := getRandomLine(fileName)
+		pickedLine, err := getRandomLine(file)
 		if err != nil {
 			return "", err
 		}
 		return pickedLine, nil
 	}
-
-	file, err := os.Open(finalFileName)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return "", errors.Join(err, &BookNotFoundError{BookTitle: fileName})
-		}
-		return "", err
-	}
-	defer file.Close()
 
 	scanner := bufio.NewScanner(file)
 	currentLine := 0
@@ -108,4 +114,25 @@ func ReadRandomLineFromFile(fileName string, lineNumber int) (string, error) {
 	}
 
 	return "", fmt.Errorf("line number %d not found in file", lineNumber)
+}
+
+func getBookFilePath(fileName string) (string, error) {
+	booksDir := getConfiguredBooksDir()
+
+	var finalFileName string
+	if fileName == "" {
+		pickedFile, err := getRandomFile(booksDir)
+		if err != nil {
+			return "", err
+		}
+		finalFileName = filepath.Join(booksDir, pickedFile)
+	} else {
+		finalFileName = filepath.Join(booksDir, fileName)
+	}
+
+	finalFileName, absPathErr := filepath.Abs(finalFileName)
+	if absPathErr != nil {
+		return "", absPathErr
+	}
+	return finalFileName, nil
 }

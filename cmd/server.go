@@ -28,6 +28,8 @@ const (
 	logLevelConfigDefaultValue  = "debug"
 	allowedOriginsConfigKey     = "ALLOWED_ORIGINS"
 	allowedOriginsDefaultValue  = "*"
+	booksDirectoryConfigKey     = "BOOKS_DIRECTORY"
+	booksDirectoryDefaultValue  = "./books"
 	defaultServerReadTimeout    = 5 * time.Second
 )
 
@@ -96,6 +98,7 @@ func bootstrap() zerolog.Logger {
 	viper.SetDefault(logLevelConfigKey, logLevelConfigDefaultValue)
 	viper.SetDefault(logFormatConfigKey, logFormatConfigDefaultValue)
 	viper.SetDefault(allowedOriginsConfigKey, allowedOriginsDefaultValue)
+	viper.SetDefault(booksDirectoryConfigKey, booksDirectoryDefaultValue)
 
 	configuredLogLevel := viper.GetString(logLevelConfigKey)
 	level, err := zerolog.ParseLevel(configuredLogLevel)
