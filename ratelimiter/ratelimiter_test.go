@@ -22,7 +22,7 @@ func TestShouldRateLimit(t *testing.T) {
 		wantReasonContains  []string
 	}{
 		{
-			name: "Single request",
+			name: "Requests to path that doesn't get rate limited, shouldn't limit",
 			config: ratelimiter.Config{
 				IPRateLimitWindow: time.Second,
 			},
@@ -32,13 +32,19 @@ func TestShouldRateLimit(t *testing.T) {
 				req := httptest.NewRequest(http.MethodGet, "https://example.com/foo", nil)
 				go func() {
 					ch <- req
-					time.Sleep(50 * time.Millisecond)
+					time.Sleep(5 * time.Millisecond)
+					ch <- req
+					time.Sleep(5 * time.Millisecond)
+					ch <- req
+					time.Sleep(5 * time.Millisecond)
+					ch <- req
+					time.Sleep(5 * time.Millisecond)
 					done <- true
 				}()
 				return ch, done
 			},
-			wantShouldRateLimit: []bool{false},
-			wantReasonContains:  []string{""},
+			wantShouldRateLimit: []bool{false, false, false, false},
+			wantReasonContains:  []string{"", "", "", ""},
 		},
 		{
 			name: "Two requests, same IP, IP rate limit, shouldn't limit",
@@ -80,7 +86,7 @@ func TestShouldRateLimit(t *testing.T) {
 				return ch, done
 			},
 			wantShouldRateLimit: []bool{false, true},
-			wantReasonContains:  []string{"", "Rate limit exceeded for IP"},
+			wantReasonContains:  []string{"", "Rate limit exceeded for IP 192.0.2.1"},
 		},
 		{
 			name: "Three requests, different IPs, IP rate limit, should limit only one",
@@ -96,21 +102,18 @@ func TestShouldRateLimit(t *testing.T) {
 				// See https://cs.opensource.google/go/go/+/refs/tags/go1.20.5:src/net/http/httptest/httptest.go;l=75
 				req2.RemoteAddr = "1.1.1.1:1234"
 				go func() {
-					ch <- req
-					time.Sleep(50 * time.Millisecond)
-
 					ch <- req2
 					time.Sleep(50 * time.Millisecond)
-
 					ch <- req
 					time.Sleep(50 * time.Millisecond)
-
+					ch <- req2
+					time.Sleep(50 * time.Millisecond)
 					done <- true
 				}()
 				return ch, done
 			},
 			wantShouldRateLimit: []bool{false, false, true},
-			wantReasonContains:  []string{"", "", "Rate limit exceeded for IP"},
+			wantReasonContains:  []string{"", "", "Rate limit exceeded for IP 1.1.1.1"},
 		},
 	}
 	for _, tt := range tests {
