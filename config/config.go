@@ -16,6 +16,15 @@ const (
 	allowedOriginsDefaultValue  = "*"
 	BooksDirectoryConfigKey     = "BOOKS_DIRECTORY"
 	booksDirectoryDefaultValue  = "./books"
+	//nolint:gosec // No hardcoded secrets here
+	RateLimitIPWindowConfigKey                    = "RATE_LIMIT_IP_WINDOW"
+	rateLimitIPWindowDefaultValue                 = "500ms"
+	RateLimitAccountWindowConfigKey               = "RATE_LIMIT_ACCOUNT_WINDOW"
+	rateLimitAccountWindowDefaultValue            = "500ms"
+	RateLimitExponentialBackoffWindowConfigKey    = "RATE_LIMIT_EXPONENTIAL_BACKOFF_WINDOW"
+	rateLimitExponentialBackoffDefaultValue       = "500ms"
+	RateLimitExponentialBackoffFactorConfigKey    = "RATE_LIMIT_EXPONENTIAL_BACKOFF_FACTOR"
+	rateLimitExponentialBackoffFactorDefaultValue = 2
 )
 
 func BootstrapConfig() {
@@ -28,4 +37,8 @@ func BootstrapConfig() {
 	viper.SetDefault(LogFormatConfigKey, logFormatConfigDefaultValue)
 	viper.SetDefault(AllowedOriginsConfigKey, allowedOriginsDefaultValue)
 	viper.SetDefault(BooksDirectoryConfigKey, booksDirectoryDefaultValue)
+	viper.SetDefault(RateLimitIPWindowConfigKey, rateLimitIPWindowDefaultValue)
+	viper.SetDefault(RateLimitAccountWindowConfigKey, rateLimitAccountWindowDefaultValue)
+	viper.SetDefault(RateLimitExponentialBackoffWindowConfigKey, rateLimitExponentialBackoffDefaultValue)
+	viper.SetDefault(RateLimitExponentialBackoffFactorConfigKey, rateLimitExponentialBackoffFactorDefaultValue)
 }

@@ -11,7 +11,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"github.com/rs/zerolog"
@@ -35,21 +34,20 @@ func NewRateLimitingApiService(logger zerolog.Logger) RateLimitingApiServicer {
 
 // RateLimitByAccountGet - An API with an aggressive rate limit by account
 func (s *RateLimitingApiService) RateLimitByAccountGet(ctx context.Context, accountId string) (ImplResponse, error) {
-	// TODO - update RateLimitByAccountGet with the required logic for this service method.
-	// Add api_rate_limiting_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	line, err := logic.ReadRandomLineFromFile("", -1)
+	if err != nil {
+		return Response(http.StatusInternalServerError, err.Error()), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, SuccessfulResponse{}) or use other options such as http.Ok ...
-	// return Response(200, SuccessfulResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(429, {}) or use other options such as http.Ok ...
-	// return Response(429, nil),nil
-
-	return Response(http.StatusNotImplemented, nil), errors.New("RateLimitByAccountGet method not implemented")
+	return Response(200, SuccessfulResponse{
+		BookName:   "Random",
+		LineNumber: 0,
+		Text:       line,
+	}), nil
 }
 
 // RateLimitByIpGet - An API with an aggressive rate limit by IP
 func (s *RateLimitingApiService) RateLimitByIpGet(ctx context.Context) (ImplResponse, error) {
-	s.logger.Info().Msg("Got into RateLimitByIpGet")
 	line, err := logic.ReadRandomLineFromFile("", -1)
 	if err != nil {
 		return Response(http.StatusInternalServerError, err.Error()), nil
@@ -64,14 +62,14 @@ func (s *RateLimitingApiService) RateLimitByIpGet(ctx context.Context) (ImplResp
 
 // RateLimitExponentialBackoffGet - An API with an aggressive rate limit with exponential backoff.
 func (s *RateLimitingApiService) RateLimitExponentialBackoffGet(ctx context.Context) (ImplResponse, error) {
-	// TODO - update RateLimitExponentialBackoffGet with the required logic for this service method.
-	// Add api_rate_limiting_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	line, err := logic.ReadRandomLineFromFile("", -1)
+	if err != nil {
+		return Response(http.StatusInternalServerError, err.Error()), nil
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, SuccessfulResponse{}) or use other options such as http.Ok ...
-	// return Response(200, SuccessfulResponse{}), nil
-
-	// TODO: Uncomment the next line to return response Response(429, CooldownResponse{}) or use other options such as http.Ok ...
-	// return Response(429, CooldownResponse{}), nil
-
-	return Response(http.StatusNotImplemented, nil), errors.New("RateLimitExponentialBackoffGet method not implemented")
+	return Response(200, SuccessfulResponse{
+		BookName:   "Random",
+		LineNumber: 0,
+		Text:       line,
+	}), nil
 }

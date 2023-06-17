@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/thecoreman/problematic-api-server/config"
+	"github.com/thecoreman/problematic-api-server/ratelimiter"
 	server "github.com/thecoreman/problematic-api-server/server/go"
 
 	"github.com/gorilla/handlers"
@@ -62,6 +63,9 @@ func main() {
 
 	router.Use(handlers.RecoveryHandler(handlers.PrintRecoveryStack(true)))
 
+	ratelimiter := initializeRateLimiter(mainLogger)
+	router.Use(ratelimiter.Middleware)
+
 	serverAddress := getServerAddressFromConfig()
 
 	server := &http.Server{
@@ -74,9 +78,9 @@ func main() {
 		Str("serverAddress", serverAddress).
 		Msg("starting server 🚀")
 	defer log.Info().Msg("server stopped 🛑")
-	err := server.ListenAndServe()
-	if err != nil {
-		panic(err)
+	serveErr := server.ListenAndServe()
+	if serveErr != nil {
+		panic(serveErr)
 	}
 }
 
@@ -103,6 +107,32 @@ func bootstrap() zerolog.Logger {
 	}
 
 	return log.Logger.With().Str("component", "main").Logger()
+}
+
+func initializeRateLimiter(mainLogger zerolog.Logger) ratelimiter.RateLimiter {
+	ipLimitRateWindow, parseErr := time.ParseDuration(
+		viper.GetString(config.RateLimitIPWindowConfigKey))
+	if parseErr != nil {
+		panic(parseErr)
+	}
+	accountLimitRateWindow, parseErr := time.ParseDuration(
+		viper.GetString(config.RateLimitAccountWindowConfigKey))
+	if parseErr != nil {
+		panic(parseErr)
+	}
+	backoffLimitRateWindow, parseErr := time.ParseDuration(
+		viper.GetString(config.RateLimitExponentialBackoffWindowConfigKey))
+	if parseErr != nil {
+		panic(parseErr)
+	}
+	backoffLimitFactor := viper.GetInt(config.RateLimitExponentialBackoffFactorConfigKey)
+	ratelimiter := ratelimiter.NewRateLimiter(mainLogger, ratelimiter.Config{
+		IPRateLimitWindow:          ipLimitRateWindow,
+		AccountRateLimitWindow:     accountLimitRateWindow,
+		BackoffRateLimitWindow:     backoffLimitRateWindow,
+		BackoffRateLimitMultiplier: backoffLimitFactor,
+	})
+	return ratelimiter
 }
 
 func getServerAddressFromConfig() string {

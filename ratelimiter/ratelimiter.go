@@ -3,10 +3,10 @@ package ratelimiter
 import (
 	"errors"
 	"fmt"
+	"math"
 	"net"
 	"net/http"
 	"net/mail"
-	"strings"
 	"sync"
 	"time"
 
@@ -43,7 +43,7 @@ func NewRateLimiter(
 	config Config,
 ) RateLimiter {
 	logger = logger.With().Str("component", "rate-limiter").Logger()
-	return &Impl{
+	rateLimiter := &Impl{
 		logger:                     logger,
 		ipRateLimitWindow:          config.IPRateLimitWindow,
 		ipRateLimitMap:             sync.Map{},
@@ -53,6 +53,10 @@ func NewRateLimiter(
 		backoffRateLimitMultiplier: config.BackoffRateLimitMultiplier,
 		backoffRateLimitMap:        sync.Map{},
 	}
+	rateLimiter.logger.Info().
+		Str("config", fmt.Sprintf("%+v", config)).
+		Msg("Rate limiter initialized")
+	return rateLimiter
 }
 
 func (rl *Impl) Middleware(next http.Handler) http.Handler {
@@ -68,6 +72,7 @@ func (rl *Impl) Middleware(next http.Handler) http.Handler {
 			return
 		}
 		if shouldRateLimit {
+			rl.logger.Info().Str("reason", reason).Msg("Rate limit exceeded")
 			w.WriteHeader(http.StatusTooManyRequests)
 			_, writeErr := w.Write([]byte("Rate limit exceeded. reason:" + reason))
 			if writeErr != nil {
@@ -97,8 +102,9 @@ func (rl *Impl) Middleware(next http.Handler) http.Handler {
 func (rl *Impl) ShouldRateLimit(r *http.Request) (bool, string, error) {
 	switch r.URL.Path {
 	case "/rate-limit/by-ip":
-		if ip := net.ParseIP(strings.Split(r.RemoteAddr, ":")[0]); ip == nil {
-			return false, "", errors.New("invalid IP address")
+		_, resolveErr := net.ResolveUDPAddr("udp", r.RemoteAddr)
+		if resolveErr != nil {
+			return false, "", fmt.Errorf("invalid address: %s, details: %w", r.RemoteAddr, resolveErr)
 		}
 		should, reason := rl.shouldRateLimitByIP(r)
 		return should, reason, nil
@@ -129,7 +135,8 @@ func (rl *Impl) ShouldRateLimit(r *http.Request) (bool, string, error) {
 
 func (rl *Impl) shouldRateLimitByIP(r *http.Request) (bool, string) {
 	// ip validated outside the function, safe to use here
-	ip := strings.Split(r.RemoteAddr, ":")[0]
+	addr, _ := net.ResolveUDPAddr("udp", r.RemoteAddr)
+	ip := addr.IP.String()
 
 	now := time.Now()
 	// Note: First load, then store.
@@ -143,6 +150,7 @@ func (rl *Impl) shouldRateLimitByIP(r *http.Request) (bool, string) {
 		}
 	}
 
+	rl.logger.Debug().Str("ip", ip).Msg("IP not rate limited")
 	return false, ""
 }
 
@@ -161,6 +169,7 @@ func (rl *Impl) shouldRateLimitByAccount(r *http.Request) (bool, string) {
 		}
 	}
 
+	rl.logger.Debug().Str("account", account).Msg("Account not rate limited")
 	return false, ""
 }
 
@@ -171,7 +180,8 @@ type exponentialRateLimitEntry struct {
 
 func (rl *Impl) shouldRateLimitExponentialBackoff(r *http.Request) (bool, string) {
 	// ip validated outside the function, safe to use here
-	ip := strings.Split(r.RemoteAddr, ":")[0]
+	addr, _ := net.ResolveUDPAddr("udp", r.RemoteAddr)
+	ip := addr.IP.String()
 
 	now := time.Now()
 	// Note: First load, then store.
@@ -186,7 +196,7 @@ func (rl *Impl) shouldRateLimitExponentialBackoff(r *http.Request) (bool, string
 	} else {
 		lastRequestTime := existingEntry.(exponentialRateLimitEntry).lastRequestTime
 		violations := existingEntry.(exponentialRateLimitEntry).violations
-		punishmentCount := violations * rl.backoffRateLimitMultiplier
+		punishmentCount := int(math.Pow(float64(rl.backoffRateLimitMultiplier), float64(violations)))
 		punishmentTime := time.Duration(punishmentCount) * rl.backoffRateLimitWindow
 		windowEnd := lastRequestTime.Add(punishmentTime)
 		if windowEnd.After(now) {
@@ -209,5 +219,6 @@ func (rl *Impl) shouldRateLimitExponentialBackoff(r *http.Request) (bool, string
 		rl.backoffRateLimitMap.Store(ip, newEntry)
 	}
 
+	rl.logger.Debug().Str("ip", ip).Msg("IP not rate limited (backoff)")
 	return false, ""
 }
