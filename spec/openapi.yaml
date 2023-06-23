@@ -9,6 +9,8 @@ info:
     consumption.
   version: 1.0.0
 servers:
+  - url: https://problematic-api-server-thecoreman.koyeb.app/
+    description: Playground server
   - url: http://localhost:4578/
     description: Local development server
 paths:
